@@ -86,3 +86,4 @@ Serial.println(angleString + "," + distanceString);
 
 }
 
+hemos tenido la idea de que en vez de un sonar el sensor sirviese como radar para los vehiculos, este seria un radar movil que esta en un costado de la carretera girando en 180 grados y captando las velocidades de los coches. esta informacion se pasa al semaforo, que son 3 leds que s exceden la velocidad limite de la zona el semaforo se pondra en rojo automaticamente obligando al coche a detenerse y reducir su velocidad
