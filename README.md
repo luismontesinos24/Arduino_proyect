@@ -5,45 +5,55 @@ https://www.instructables.com/Arduino-Radar-1/ (Punto de partida)
 imagen del poroyecto montado en tinkercad
 <img width="1920" height="856" alt="Amazing Kieran-Fulffy" src="https://github.com/user-attachments/assets/cd40dc8e-7850-4443-918f-87407224ee93" />
 
-
-codiogo practicamente acabado
+Debido a no contar con un led blanco hemos tenido que usar 2 rgb.
+codiogo  acabado
 
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// --- CONFIGURACIÓN PANTALLA OLED ---
+// --- PANTALLA OLED ---
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET    -1 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // --- PINOUT ---
 const int pinTrig = 10;
 const int pinEcho = 9;
 const int pinServo = 11;
 
-// Pines del RGB (Si usas leds separados, ajusta aquí)
-const int pinRGB_Rojo = 4;
-const int pinRGB_Verde = 5;
-const int pinLedFlash = 6; 
+// RGB 1: Semáforo
+const int pinSem_Rojo = 4;
+const int pinSem_Verde = 5;
+
+// RGB 2: Flash (Blanco)
+const int pinFlash_R = 6;
+const int pinFlash_G = 7;
+const int pinFlash_B = 8;
 
 Servo miServo;
 
-// --- VARIABLES ---
+// --- CONFIGURACIÓN VELOCIDAD ---
+float limiteVelocidad = 50.0; // Velocidad para multa
+
+// --- VARIABLES DEL SERVO (TEMPORIZADOR) ---
+unsigned long ultimoCambioServo = 0;
+// 5 Minutos en milisegundos = 5 * 60 * 1000 = 300000
+const unsigned long intervaloServo = 300000; 
+bool servoEnPosicionInicial = true; // Para saber dónde está
+
+// --- VARIABLES DEL RADAR ---
 float distancia1, distancia2;
 float velocidad; 
-unsigned long tiempoEspera = 100; // 0.1 segundos
-float limiteVelocidad = 40.0; 
+unsigned long tiempoEsperaRadar = 100; // Medir cada 0.1s
 
 void setup() {
   Serial.begin(9600);
   
-  // Iniciar Pantalla
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // La dirección suele ser 0x3C
-    Serial.println(F("Error: No encuentro la pantalla OLED"));
-    for(;;); // Se queda pillado aquí si falla
+  // Pantalla
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    for(;;);
   }
   display.clearDisplay();
   display.setTextColor(WHITE);
@@ -51,98 +61,128 @@ void setup() {
   pinMode(pinTrig, OUTPUT);
   pinMode(pinEcho, INPUT);
   
-  pinMode(pinRGB_Rojo, OUTPUT);
-  pinMode(pinRGB_Verde, OUTPUT);
-  pinMode(pinLedFlash, OUTPUT);
+  pinMode(pinSem_Rojo, OUTPUT);
+  pinMode(pinSem_Verde, OUTPUT);
+  pinMode(pinFlash_R, OUTPUT);
+  pinMode(pinFlash_G, OUTPUT);
+  pinMode(pinFlash_B, OUTPUT);
   
   miServo.attach(pinServo);
-  miServo.write(0); 
+  miServo.write(0); // Posición inicial
   
-  setColor(0, 1); // Verde inicial
-  
-  // Mensaje de bienvenida en pantalla
+  // Mensaje inicio
   display.setTextSize(1);
   display.setCursor(0, 10);
-  display.println("RADAR ACTIVO");
+  display.println("SISTEMA AUTO");
   display.display();
-  delay(2000);
+  delay(1000);
 }
 
 void loop() {
+  // Obtenemos la hora actual del Arduino
+  unsigned long tiempoActual = millis();
+
+  // ---------------------------------------------
+  // TAREA 1: CONTROL DEL SERVO (CADA 5 MINUTOS)
+  // ---------------------------------------------
+  if (tiempoActual - ultimoCambioServo >= intervaloServo) {
+    // Han pasado 5 minutos, toca cambiar
+    ultimoCambioServo = tiempoActual; // Reseteamos cronómetro
+    
+    if (servoEnPosicionInicial) {
+      // Si estaba en 0, va a 180
+      miServo.write(180);
+      servoEnPosicionInicial = false;
+    } else {
+      // Si estaba en 180, vuelve a 0
+      miServo.write(0);
+      servoEnPosicionInicial = true;
+    }
+  }
+
+  // ---------------------------------------------
+  // TAREA 2: RADAR DE VELOCIDAD (SIEMPRE ACTIVO)
+  // ---------------------------------------------
+  
+  // Medir distancia 1
   distancia1 = medir();
-  delay(tiempoEspera); 
+  delay(tiempoEsperaRadar); // Pequeña pausa para el cálculo
+  // Medir distancia 2
   distancia2 = medir();
   
-  velocidad = (distancia1 - distancia2) / (tiempoEspera / 1000.0);
-
-  // --- ACTUALIZAR PANTALLA ---
-  display.clearDisplay();
+  // Calcular
+  velocidad = (distancia1 - distancia2) / (tiempoEsperaRadar / 1000.0);
   
-  // Dibujar caja alrededor
+  // Actualizar Pantalla y Luces
+  actualizarPantallaYLuces(velocidad);
+}
+
+void actualizarPantallaYLuces(float vel) {
+  display.clearDisplay();
   display.drawRect(0, 0, 128, 64, WHITE);
   
-  // Título
+  // Mostrar estado del servo (informativo)
   display.setTextSize(1);
-  display.setCursor(10, 5);
-  display.print("VELOCIDAD ACTUAL:");
-  
-  // Número GRANDE de la velocidad
+  display.setCursor(5, 5);
+  if(servoEnPosicionInicial) {
+    display.print("MODO: A (0 deg)");
+  } else {
+    display.print("MODO: B (180 deg)");
+  }
+
+  // Mostrar Velocidad
   display.setTextSize(3);
   display.setCursor(20, 25);
-  
-  if (velocidad > 2) {
-    display.print((int)velocidad); // Mostramos sin decimales pa que se vea grande
-  } else {
-    display.print("0");
-  }
-  
+  if (vel > 2) display.print((int)vel);
+  else display.print("0");
   display.setTextSize(1);
   display.print(" cm/s");
-  
-  // --- LÓGICA DE ALERTAS ---
-  if (velocidad > 2) { 
-    // Servo
-    int angulo = map(velocidad, 0, 100, 0, 180);
-    miServo.write(constrain(angulo, 0, 180));
 
-    if (velocidad > limiteVelocidad) {
-      // --- MODO MULTA ---
-      display.setCursor(10, 55);
-      display.print("! EXCESO !"); // Aviso en pantalla
-      display.display(); // Actualizamos pantalla antes del flash
-      
-      setColor(1, 0); // Rojo
-      
-      // Flash
-      for(int i=0; i<3; i++){
-        digitalWrite(pinLedFlash, HIGH);
-        delay(40);
-        digitalWrite(pinLedFlash, LOW);
-        delay(40);
-      }
-      delay(1000);
-      
-    } else {
-      // --- MODO SEGURO ---
-      display.setCursor(10, 55);
-      display.print("SEGURO");
-      display.display();
-      setColor(0, 1); // Verde
-    }
-  } else {
-    // Reposo
+  // Lógica de Multa
+  if (vel > limiteVelocidad) {
+    // ! MULTA !
     display.setCursor(10, 55);
-    display.print("ESPERANDO...");
-    display.display();
+    display.print("! EXCESO !");
     
-    miServo.write(0);
-    setColor(0, 1); 
+    controlarSemaforo(1, 0); // Rojo
+    dispararFlash();         // Flashazo
+    
+  } else {
+    // CIRCULACIÓN NORMAL
+    display.setCursor(10, 55);
+    display.print("VIGILANDO...");
+    
+    controlarSemaforo(0, 1); // Verde
+    apagarFlash();
+  }
+  
+  display.display();
+}
+
+// --- FUNCIONES EXTRA ---
+void controlarSemaforo(int rojo, int verde) {
+  digitalWrite(pinSem_Rojo, rojo);
+  digitalWrite(pinSem_Verde, verde);
+}
+
+void dispararFlash() {
+  // Flash rápido (sin bloquear mucho tiempo)
+  for(int i=0; i<3; i++){
+    digitalWrite(pinFlash_R, HIGH);
+    digitalWrite(pinFlash_G, HIGH);
+    digitalWrite(pinFlash_B, HIGH);
+    delay(30);
+    digitalWrite(pinFlash_R, LOW);
+    digitalWrite(pinFlash_G, LOW);
+    digitalWrite(pinFlash_B, LOW);
+    delay(30);
   }
 }
 
-void setColor(int rojo, int verde) {
-  digitalWrite(pinRGB_Rojo, rojo);
-  digitalWrite(pinRGB_Verde, verde);
+void apagarFlash() {
+  digitalWrite(pinFlash_R, LOW);
+  digitalWrite(pinFlash_G, LOW);
+  digitalWrite(pinFlash_B, LOW);
 }
 
 float medir() {
@@ -151,10 +191,8 @@ float medir() {
   digitalWrite(pinTrig, HIGH);
   delayMicroseconds(10);
   digitalWrite(pinTrig, LOW);
-  long duracion = pulseIn(pinEcho, HIGH);
-  float d = duracion / 58.2;
-  if (d > 300 || d == 0) return 0;
-  return d;
+  long duracion = pulseIn(pinEcho, HIGH, 25000); 
+  if (duracion == 0) return 0;
+  return duracion / 58.2;
 }
 
-hemos tenido la idea de que en vez de un sonar el sensor sirviese como radar para los vehiculos, este seria un radar movil que esta en un costado de la carretera girando en 180 grados y captando las velocidades de los coches. esta informacion se pasa al semaforo, que son 3 leds que s exceden la velocidad limite de la zona el semaforo se pondra en rojo automaticamente obligando al coche a detenerse y reducir su velocidad
