@@ -196,3 +196,7 @@ float medir() {
   return duracion / 58.2;
 }
 
+DIA 5/12
+la semana pasada planteamos cambiar el codigo y la funcion del programa para que el servo girase 180 grados estando encima de la carretera (por ejemplo en una señalizacion) en una carretera de doble sentido para que puedan sufrir las consecuencias del exceso de velocidaad en las dos direcciones de la carretera. A su vez la pantalla cuando se excede la velocidad enseñara por pantalla la velocidad a la que se iba en exceeso y saltara un led de color blanco simulando el flash de la camara de un Radar. El codigo nuevo ha sido reemplazado por el anterior en la parte superior  
+Tambien hoy hemos hecho el montaje completo (adjuntamo0s foto del montaje)
+![Imagen de WhatsApp 2025-12-05 a las 13 59 16_3750a368](https://github.com/user-attachments/assets/de865773-443f-4828-823f-3753704c7fde)
